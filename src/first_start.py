@@ -21,10 +21,13 @@ METRICS = ["fidelity", "fit_r2", "mean_nn_dist", "frac_seen_combo", "mean_dist_t
 
 def first_start():
     rows = []
-    for name, samplers in [("synthetic_dep", ["independent", "neighbors", "dep_aware"]), ("synthetic_indep", ["independent"])]:
+    three = ["independent", "neighbors", "dep_aware"]
+    for name, samplers, noise in [("synthetic_dep", three, 0.0), ("synthetic_indep", ["independent"], 0.0),
+                                  ("synthetic_dep", three, 0.5)]:  # noise sd 0.5 on a logit of scale ~3
         ds = load_dataset(name)
         T = lambda X: X[ds.numeric].to_numpy(float)
-        E = Explainer(linear_predictor(ds.linear_w, ds.linear_b), T, ds.X_train, ds.numeric, ds.categorical, ds.numeric)
+        f, nrng = linear_predictor(ds.linear_w, ds.linear_b), np.random.default_rng(123)
+        E = Explainer(lambda X: f(X) + noise * nrng.normal(size=len(X)), T, ds.X_train, ds.numeric, ds.categorical, ds.numeric)
         for case in ds.explain_idx[:20]:
             x = ds.X_test.iloc[[case]]
             ev = default_eval_neighborhood(T(x)[0], T(ds.X_dev), ds.X_dev, k=200)
@@ -32,13 +35,13 @@ def first_start():
                 for n in BUDGETS:
                     for seed in SEEDS:
                         r = E.explain(x, SAMPLERS[s][0], n, seed, ev, alpha=1e-8)
-                        rows.append(dict(dataset=name, sampler=s, n=n, case=case, seed=seed,
+                        rows.append(dict(dataset=name, noise=noise, sampler=s, n=n, case=case, seed=seed,
                                          max_abs_err=np.abs(r["coef"] - ds.linear_w).max(), fidelity=r["fidelity"]))
     df = pd.DataFrame(rows)
     df.to_csv(OUT / "first_start.csv", index=False)
-    print(df.groupby(["dataset", "sampler", "n"], sort=False)
+    print(df.groupby(["dataset", "noise", "sampler", "n"], sort=False)
           .agg(max_abs_err=("max_abs_err", "max"), mean_fidelity=("fidelity", "mean")).to_string())
-    assert (df.max_abs_err < 1e-4).all(), df.max_abs_err.max()
+    assert (df[df.noise == 0].max_abs_err < 1e-4).all(), df.max_abs_err.max()  # exact target must be recovered exactly
 
 
 def pilot(ds, models, model_names, n_cases, samplers, budgets, seeds, rows):
