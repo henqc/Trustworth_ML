@@ -45,11 +45,12 @@ def _marginal(X_train, c, n, rng):
     return X_train[c].iloc[rng.integers(len(X_train), size=n)].reset_index(drop=True)
 
 
-def sample_independent(x, X_train, Z_train, z_x, numeric, categorical, n, rng, **kw):
-    """LIME-style baseline. Numeric: x_j + N(0, std_train_j); categorical: training marginal (NaN is a level); every feature
-    independently. Preserves NO dependencies: breaks numeric correlations and creates unseen categorical combinations."""
+def sample_independent(x, X_train, Z_train, z_x, numeric, categorical, n, rng, scale=1.0, **kw):
+    """LIME-style baseline. Numeric: x_j + N(0, (scale * std_train_j)^2); categorical: training marginal (NaN is a level);
+    every feature independently. Preserves NO dependencies: breaks numeric correlations and creates unseen categorical
+    combinations. scale only shrinks the numeric noise; resampled categoricals keep their full distance."""
     S = x.iloc[np.zeros(n, int)].reset_index(drop=True)
-    S[numeric] = x[numeric].to_numpy(float) + rng.normal(size=(n, len(numeric))) * X_train[numeric].std().to_numpy()
+    S[numeric] = x[numeric].to_numpy(float) + rng.normal(size=(n, len(numeric))) * X_train[numeric].std().to_numpy() * scale
     for c in categorical:
         S[c] = _marginal(X_train, c, n, rng)
     return S
@@ -118,10 +119,11 @@ class Explainer:
         self.locked = [c for c in self.numeric
                        if any(X_train.groupby(g, dropna=False)[c].nunique(dropna=False).max() == 1 for g in self.categorical)]
 
-    def explain(self, x, sampler, n, seed, eval_X, locality=True, validity_weight=False, alpha=1e-3, **sampler_kw):
-        """Fit a weighted ridge surrogate on sampler's neighborhood of the 1-row x; fidelity = weighted R^2 on the caller's eval_X."""
+    def explain(self, x, sampler, n, seed, eval_X, locality=True, validity_weight=False, alpha=1e-3, width=None, **sampler_kw):
+        """Fit a weighted ridge surrogate on sampler's neighborhood of the 1-row x; fidelity = weighted R^2 on the caller's eval_X.
+        width: kernel width for the fit weights, the fidelity/fit_r2 weights and the validity term (None -> 0.75*sqrt(p))."""
         Zf = lambda X: np.asarray(self.transform(X), float)
-        width = 0.75 * np.sqrt(self.p)
+        width = 0.75 * np.sqrt(self.p) if width is None else width
         z_x = Zf(x)[0]
         t0 = time.perf_counter()
         S = sampler(x, self.X_train, self.Z_train, z_x, self.numeric, self.categorical, n, np.random.default_rng(seed),
@@ -140,13 +142,16 @@ class Explainer:
             "fidelity": _wr2(self.predict_fn(eval_X), b0 + Z_e @ coef, kernel_weights(np.linalg.norm(Z_e - z_x, axis=1), width)),
             "fit_r2": _wr2(f_s, b0 + Z_s @ coef, kernel_weights(d, width)),
             "validity": validity(Z_s, self.nn, S, self.X_train, self.categorical),
-            "mean_dist_to_query": float(d.mean()), "n": n, "runtime_s": runtime,
+            "mean_dist_to_query": float(d.mean()), "mean_weight": float(w.mean()), "n": n, "runtime_s": runtime,
         }
 
 
 def rank_stability(coefs):
-    """Mean pairwise Spearman correlation of |coef| across seeds. 1.0 = identical ranking."""
-    return float(np.mean([spearmanr(np.abs(a), np.abs(b)).statistic for a, b in combinations(coefs, 2)]))
+    """Mean pairwise Spearman correlation of |coef| across seeds, over coefficients that are nonzero in at least one seed.
+    One-hot levels absent from every seed's samples are exactly 0 everywhere and would otherwise count as agreement."""
+    C = np.abs(np.array(coefs))
+    C = C[:, np.any(C != 0, axis=0)]
+    return float(np.mean([spearmanr(a, b).statistic for a, b in combinations(C, 2)]))
 
 
 def default_eval_neighborhood(z_x, Z_pool, X_pool, k=200):
@@ -202,6 +207,11 @@ if __name__ == "__main__":
     # 3. validity
     assert R["dep_aware"]["validity"]["frac_seen_combo"] == 1.0 and R["neighbors"]["validity"]["frac_seen_combo"] == 1.0
     assert R["dep_aware"]["validity"]["mean_nn_dist"] < R["independent"]["validity"]["mean_nn_dist"]
+    # 3b. independent noise scale and kernel width knobs (nonlinear f so the width actually moves fidelity)
+    assert E.explain(x, sample_independent, 500, 0, ev, scale=0.5)["mean_dist_to_query"] < R["independent"]["mean_dist_to_query"]
+    Es = Explainer(lambda D: np.sin(f(D)), T, X, num, cat, num)
+    fw, f0 = (Es.explain(x, sample_independent, 500, 0, ev, width=w_)["fidelity"] for w_ in (1.0, None))
+    assert np.isfinite(fw) and abs(fw - f0) > 1e-3, (fw, f0)
 
     # 4. correlated pair: dep-aware matches the LOCAL corr of the k=200 training neighbors (~0.3 here; the global 0.8 is not
     #    visible inside a 200-of-3000 ball), the ablation and independent sampler do not
@@ -221,6 +231,7 @@ if __name__ == "__main__":
 
     # 5. stability metric and fidelity sanity on a perfectly linear f
     assert rank_stability([true, true]) == 1.0
+    assert abs(rank_stability([np.r_[1.0, 2, 0, 0], np.r_[2.0, 1, 0, 0]]) + 1) < 1e-12  # always-zero coefs are excluded
     assert abs(R["dep_aware"]["fidelity"] - R["dep_aware"]["fit_r2"]) < 1e-9 and R["dep_aware"]["fidelity"] > 1 - 1e-9
 
     # 6. summary table
