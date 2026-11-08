@@ -39,3 +39,9 @@ Not run this week: SHAP (optional in the brief), a categorical keep-probability 
 
 ## Compute plan
 6 conditions x 2 budgets x 5 seeds x 100 cases x 2 models x 3 datasets = 36,000 explanations; week-3 timings predict about 70 minutes sequential on the M1 Pro laptop (C0). Outputs: `results/main/grid.csv` (every explanation), `results/main/coefs_{dataset}_{model}.npy` (every coefficient vector), `results/main/summary.csv|md`, `results/main/paired.csv`, figures in `results/figures/`.
+
+## Amendments (2026-11-08, after an adversarial code review, before results were read)
+1. Disclosure: the kernel-width rule and the matched scales were chosen on the first 30 synthetic and 15 Adult explanation cases (pilot and week-3 sweep), which are part of the 100-case sets. The analysis therefore also reports every paired comparison on the untouched cases only (`paired_heldout_cases.csv`, synthetic cases 31-100, Adult 16-100) as the confirmatory subset.
+2. The `abl_no_dependency` condition removes dependency structure AND changes the noise scale (global training std instead of the local stratum covariance), so its gap to `dep_aware` is a dependency-plus-scale effect. It is reported as such; an isolating ablation that keeps the local diagonal variance and removes only the correlations and the categorical block is scheduled for week 5.
+3. Failure cases are listed per budget (n = 200 and n = 500), not only at n = 500.
+4. The analysis verifies grid completeness (every condition x budget x case x seed exactly once, cases in manifest order, no NaN coefficients) before computing anything, and keeps the exclusion counts in the CSVs.
