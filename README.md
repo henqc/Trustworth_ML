@@ -3,7 +3,11 @@
 ## How to run (from the repo root)
 1. `python3 -m venv .venv && source .venv/bin/activate`
 2. `pip install -r requirements.txt`
-3. Download `adult.data`, `adult.test`, `adult.names` from https://archive.ics.uci.edu/ml/machine-learning-databases/adult/ into `data/adult/`
+3. Download the three Adult files into `data/adult/`. The folder URL itself returns "Not Found" because UCI serves no directory listing, so fetch the files by name:
+   ```bash
+   mkdir -p data/adult && for f in adult.data adult.test adult.names; do curl -fL -o "data/adult/$f" "https://archive.ics.uci.edu/ml/machine-learning-databases/adult/$f"; done
+   ```
+   Dataset page: https://archive.ics.uci.edu/dataset/2/adult. `load_dataset("adult")` compares the files' SHA-256 with `manifests/splits.json` and refuses files that do not match.
 4. `python src/manifest.py` (only once, before any training; it overwrites `manifests/splits.json`, so skip it if the manifest exists)
 5. `python src/data.py` (data/split/model self-check)
 6. `python src/explain.py` (sampler/surrogate self-check)
