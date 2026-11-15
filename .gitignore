@@ -3,3 +3,4 @@ __pycache__/
 data/adult/*.data
 data/adult/*.test
 checkpoints/*.joblib
+.DS_Store
