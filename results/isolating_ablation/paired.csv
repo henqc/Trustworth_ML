@@ -1,0 +1,3 @@
+n,comparison,mean_delta,ci95_low,ci95_high,dep_aware_wins,n_cases
+200,dep_aware_minus_isolating_no_dependency,2.1114459659528624,0.8244949317950991,4.0354172640939865,90,100
+500,dep_aware_minus_isolating_no_dependency,1.7697221970415333,0.7389936807018846,3.2824385047126814,86,100
