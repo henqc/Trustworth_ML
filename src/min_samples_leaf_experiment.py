@@ -3,9 +3,12 @@
 Run from the repository root:
     python src/min_samples_leaf_experiment.py
 
-This is a separate Adult-only experiment. It does not modify results/main.
+This is a separate experiment. It does not modify results/main. Default dataset: Adult
+(results/min_samples_leaf/). Optional argument: another dataset name, e.g.
+    python src/min_samples_leaf_experiment.py synthetic_dep   -> results/min_samples_leaf_synthetic_dep/
 """
 import json
+import sys
 import time
 from itertools import combinations
 from pathlib import Path
@@ -32,7 +35,8 @@ N_CASES = 100
 K_EVAL = 200
 N_BOOT = 2000
 BOOT_SEED = 0
-OUT = Path("results/min_samples_leaf")
+DATASET = sys.argv[1] if len(sys.argv) > 1 else "adult"
+OUT = Path("results/min_samples_leaf" + ("" if DATASET == "adult" else f"_{DATASET}"))
 OUT.mkdir(parents=True, exist_ok=True)
 
 GRID_COLUMNS = [
@@ -57,7 +61,7 @@ def fit_rf(ds, min_samples_leaf):
     model.fit(ds.X_train, ds.y_train)
     elapsed = time.perf_counter() - t0
     print(
-        f"Adult RF min_samples_leaf={min_samples_leaf}: "
+        f"{DATASET} RF min_samples_leaf={min_samples_leaf}: "
         f"dev acc {model.score(ds.X_dev, ds.y_dev):.4f}; fit {elapsed:.1f}s",
         flush=True,
     )
@@ -75,7 +79,7 @@ def bootstrap_ci(values, n_boot=N_BOOT, seed=BOOT_SEED):
 
 def main():
     total_start = time.perf_counter()
-    ds = load_dataset("adult")
+    ds = load_dataset(DATASET)
     if len(ds.explain_idx) < N_CASES:
         raise ValueError(f"Expected at least {N_CASES} explanation cases")
 
@@ -131,7 +135,7 @@ def main():
                         coef_tensor[ci, bi, case_pos, si] = result["coef"]
                         validity = result["validity"]
                         all_rows.append({
-                            "dataset": "adult",
+                            "dataset": DATASET,
                             "model": "rf",
                             "min_samples_leaf": leaf,
                             "condition": condition,

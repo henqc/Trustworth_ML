@@ -32,3 +32,11 @@ No external explanation code is used or adapted; the samplers, the weighted ridg
 - joblib (BSD-3): checkpoint files
 
 Data: UCI Adult (Becker and Kohavi, 1996, https://doi.org/10.24432/C5XW20), licensed CC BY 4.0. Download it as in step 3 of "How to run"; `manifests/splits.json` records the sha256 of the files used.
+
+## Week 5 analyses
+All read the frozen main grid in `results/main/`; none reruns it. Consolidated findings: `results/week5_evidence.md`.
+- `python src/week5_analysis.py` (15 s): weighted RMSE for every grid explanation, the independent-feature control, and rank stability of the isolating ablation → `results/week5/`
+- `python src/feature_stability_check.py` (7 s): feature-level stability under four importance definitions with a noise null → `results/feature_groups/`
+- `python src/min_samples_leaf_experiment.py [dataset]` (35 min on Adult, 14 min with `synthetic_dep`): forest leaf-size sweep, dependency-aware vs training neighbors → `results/min_samples_leaf[_dataset]/`
+- `python src/isolating_ablation.py`: isolating dependency ablation on Adult RF → `results/isolating_ablation/`
+- `python src/analyze_failures_fixed.py`: Adult evaluation-neighborhood variance and weighted MSE → `results/failure_analysis/`
