@@ -3,3 +3,5 @@ __pycache__/
 data/adult/*.data
 data/adult/*.test
 checkpoints/*.joblib
+results/supplement/parts/
+results/w4_leaf_parts/

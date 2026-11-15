@@ -45,14 +45,21 @@ def _marginal(X_train, c, n, rng):
     return X_train[c].iloc[rng.integers(len(X_train), size=n)].reset_index(drop=True)
 
 
-def sample_independent(x, X_train, Z_train, z_x, numeric, categorical, n, rng, scale=1.0, **kw):
+def sample_independent(x, X_train, Z_train, z_x, numeric, categorical, n, rng, scale=1.0, keep_prob=0.0, **kw):
     """LIME-style baseline. Numeric: x_j + N(0, (scale * std_train_j)^2); categorical: training marginal (NaN is a level);
     every feature independently. Preserves NO dependencies: breaks numeric correlations and creates unseen categorical
-    combinations. scale only shrinks the numeric noise; resampled categoricals keep their full distance."""
+    combinations. scale only shrinks the numeric noise; resampled categoricals keep their full distance.
+    keep_prob (distance-matching knob for categorical data): each categorical cell independently keeps the query's value
+    with this probability, else takes its marginal draw. Still independent across features (no combination is enforced).
+    keep_prob=0 draws nothing extra, so the random stream and every earlier result are unchanged."""
     S = x.iloc[np.zeros(n, int)].reset_index(drop=True)
     S[numeric] = x[numeric].to_numpy(float) + rng.normal(size=(n, len(numeric))) * X_train[numeric].std().to_numpy() * scale
     for c in categorical:
         S[c] = _marginal(X_train, c, n, rng)
+    if keep_prob > 0 and categorical:
+        keep = rng.random((n, len(categorical))) < keep_prob
+        for j, c in enumerate(categorical):
+            S[c] = S[c].where(~keep[:, j], x[c].iloc[0])
     return S
 
 
@@ -63,7 +70,7 @@ def sample_neighbors(x, X_train, Z_train, z_x, numeric, categorical, n, rng, k=2
 
 
 def sample_dependency_aware(x, X_train, Z_train, z_x, numeric, categorical, n, rng, k=200, scale=0.5, dependencies=True,
-                            locked=(), **kw):
+                            locked=(), anchor_width=None, **kw):
     """Dependency-aware neighborhood (original component). Anchor = one of the k nearest training rows (prob. ~ kernel of its
     Z distance); copy its categoricals as a block; add N(0, scale^2 * Sigma_stratum) to its numerics, where the stratum is the
     neighbors sharing its categorical tuple (all k if < 5 rows or no categoricals); clip numerics to the training range.
@@ -73,9 +80,10 @@ def sample_dependency_aware(x, X_train, Z_train, z_x, numeric, categorical, n, r
     the stratum; exact for locked partners, approximate when a stratum < 5 rows falls back to all k neighbors),
     (c) local numeric-numeric correlation. Not preserved: higher-order / non-Gaussian numeric structure.
     dependencies=False (ablation): categoricals redrawn from marginals, EVERY numeric coordinate takes its own independently
-    drawn anchor (kills numeric-numeric and categorical-numeric structure), noise N(0, scale^2 * diag(global var)); clipped."""
+    drawn anchor (kills numeric-numeric and categorical-numeric structure), noise N(0, scale^2 * diag(global var)); clipped.
+    anchor_width: kernel width of the anchor-selection probabilities (None -> 0.75*sqrt(p), the protocol-v1 setting)."""
     idx, d = _knn(Z_train, z_x, k)
-    p = kernel_weights(d, 0.75 * np.sqrt(Z_train.shape[1]))
+    p = kernel_weights(d, 0.75 * np.sqrt(Z_train.shape[1]) if anchor_width is None else anchor_width)
     p /= p.sum()
     a = rng.choice(len(idx), n, p=p)  # anchor = position in the neighbor list
     S = X_train.iloc[idx[a]].reset_index(drop=True)
@@ -212,6 +220,22 @@ if __name__ == "__main__":
     Es = Explainer(lambda D: np.sin(f(D)), T, X, num, cat, num)
     fw, f0 = (Es.explain(x, sample_independent, 500, 0, ev, width=w_)["fidelity"] for w_ in (1.0, None))
     assert np.isfinite(fw) and abs(fw - f0) > 1e-3, (fw, f0)
+
+    # 3c. categorical keep-probability knob: 0 is bit-identical to the old sampler, 1 copies every categorical of the query,
+    #     intermediate values keep about that fraction and move the samples toward the query
+    s0 = sample_independent(x, X, E.Z_train, z_x, num, cat, 500, np.random.default_rng(0))
+    assert s0.equals(sample_independent(x, X, E.Z_train, z_x, num, cat, 500, np.random.default_rng(0), keep_prob=0.0))
+    s1 = sample_independent(x, X, E.Z_train, z_x, num, cat, 500, np.random.default_rng(0), keep_prob=1.0)
+    q = x["g"].iloc[0]
+    assert (s1["g"].isna().all() if pd.isna(q) else (s1["g"] == q).all()) and s1[num].equals(s0[num])
+    sh = sample_independent(x, X, E.Z_train, z_x, num, cat, 4000, np.random.default_rng(0), keep_prob=0.5)
+    same = lambda S: (S["g"].isna() if pd.isna(q) else S["g"] == q).mean()
+    s0b = sample_independent(x, X, E.Z_train, z_x, num, cat, 4000, np.random.default_rng(0))
+    assert abs(same(sh) - (0.5 + 0.5 * same(s0b))) < 0.03, (same(sh), same(s0b))
+    # 3d. anchor_width=None reproduces the default anchor kernel exactly
+    a0 = sample_dependency_aware(x, X, E.Z_train, z_x, num, cat, 500, np.random.default_rng(0))
+    a1 = sample_dependency_aware(x, X, E.Z_train, z_x, num, cat, 500, np.random.default_rng(0), anchor_width=0.75 * np.sqrt(E.p))
+    assert a0.equals(a1)
 
     # 4. correlated pair: dep-aware matches the LOCAL corr of the k=200 training neighbors (~0.3 here; the global 0.8 is not
     #    visible inside a 200-of-3000 ball), the ablation and independent sampler do not

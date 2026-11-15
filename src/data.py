@@ -60,8 +60,11 @@ def load_adult(data_dir="data/adult"):
 
 
 def sha256(path):
-    with open(path, "rb") as f:
-        return hashlib.file_digest(f, "sha256").hexdigest()
+    with open(path, "rb") as f:  # chunked read: same digest as hashlib.file_digest (3.11+), also runs on 3.10
+        h = hashlib.sha256()
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+        return h.hexdigest()
 
 
 def build_preprocessor(numeric, categorical):
