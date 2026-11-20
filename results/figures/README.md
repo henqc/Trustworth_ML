@@ -17,4 +17,7 @@ Main grid (protocol v1; each figure is skipped with a printed note until `src/an
 - `fig_main_paired_stability.png`: the same forest plot for rank stability, x in [−1, 1]. From `results/main/paired.csv`.
 - `fig_main_validity.png`: synthetic dependent RF and Adult RF, n = 500: mean distance to the nearest training record and share of samples whose category combination occurs in training, per condition (means over cases and seeds). From `results/main/summary.csv`.
 
+- `fig_talk_fidelity.png`: slide version of `fig_main_fidelity.png` for the final talk: the four compared samplers at n = 500, median over cases, one panel per model, value labels, the deck's palette. From `results/main/summary.csv`.
+- `fig_talk_leaf.png`: slide figure for the leaf-size sweep: mean paired fidelity lead of dependency-aware over training neighbors with its 95% CI at n = 500, Adult and correlated synthetic. From `results/min_samples_leaf*/paired.csv`.
+
 The pilot figures above do not plot rank stability: the pilot stored no coefficient vectors. `fig_main_stability.png` and `fig_main_paired_stability.png` cover it for the main grid.
