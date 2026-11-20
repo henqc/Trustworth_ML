@@ -37,7 +37,7 @@ Mean weighted RMSE, n = 500 (fidelity median in parentheses):
 
 | condition | Adult, RF | correlated synthetic, RF |
 |---|---|---|
-| independent (LIME-style) | 0.144 (−0.31) | 0.138 (0.64) |
+| independent (LIME-style) | 0.143 (−0.31) | 0.138 (0.64) |
 | independent, scale-adjusted | 0.105 (0.29) | 0.134 (0.69) |
 | training neighbors | 0.083 (0.50) | 0.131 (0.68) |
 | dependency-aware | **0.078** (0.57) | **0.103** (0.80) |
@@ -54,7 +54,7 @@ Paired RMSE differences at n = 500, baseline − dependency-aware (positive = de
 | Adult, LR | +0.049 [0.045, 0.053], 98 | +0.022 [0.017, 0.027], 82 | −0.0005 [−0.0010, −0.0001], 39 |
 | Adult, RF | +0.066 [0.060, 0.072], 98 | +0.027 [0.021, 0.034], 92 | +0.006 [0.004, 0.007], 87 |
 
-On absolute error the Adult gap between independent and dependency-aware sampling is about 2× (0.144 vs 0.078), not the −16 mean R² the week-4 table suggested; the ordering of conditions is unchanged. One comparison sharpens: on Adult LR, training neighbors have significantly, though negligibly, lower error than dependency-aware (0.0005), where fidelity was inconclusive.
+On absolute error the Adult gap between independent and dependency-aware sampling is about 2× (0.143 vs 0.078), not the −16 mean R² the week-4 table suggested; the ordering of conditions is unchanged. One comparison sharpens: on Adult LR, training neighbors have significantly, though negligibly, lower error than dependency-aware (0.0005), where fidelity was inconclusive.
 
 **3b. How much of the negative-R² tail is a small-denominator effect?** Adult, n = 500: per-case fidelity correlates with log prediction variance at ρ = +0.97 for the independent sampler and +0.64 for dependency-aware. Negative-fidelity cases: independent 41 (LR) and 58 (RF) of 100, of which only 10 sit in the bottom variance decile; dependency-aware 3 and 4. Restricting to cases above the 10th variance percentile (a sensitivity analysis, not an exclusion rule) moves the RF medians from −0.31 to −0.08 (independent) and from 0.57 to 0.60 (dependency-aware). The tiny denominator inflates the size of the worst values, but most independent-sampler failures are genuine: the surrogate is worse than predicting the neighborhood mean.
 

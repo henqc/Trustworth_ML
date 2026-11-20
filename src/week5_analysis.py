@@ -1,7 +1,8 @@
 """Week-5 analysis (results/week4_evidence.md, section 5). A: absolute error (kernel-weighted RMSE) for the whole main grid,
-B: the independent-feature control, C: rank stability of the teammate's isolating ablation (Adult RF, her own run).
+B: the independent-feature control, C: rank stability of the teammate's isolating ablation (Adult RF, her own run),
+D: forest dev accuracy and the lead over training neighbors across the leaf-size sweep.
 Analysis only: reads results/main and results/isolating_ablation, refits the six models to rebuild the evaluation
-neighborhoods, writes results/week5/{analysis.md, eval_variance.csv, paired_rmse.csv, isolating_stability.csv}.
+neighborhoods, writes results/week5/{analysis.md, eval_variance.csv, paired_rmse.csv, isolating_stability.csv, leaf_sweep.csv}.
 Run from the repo root: .venv/bin/python src/week5_analysis.py"""
 import json
 import time
@@ -10,9 +11,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.pipeline import Pipeline
 
 from analyze_grid import BASES, BUDGETS, KEYS
-from data import fit_models, load_dataset
+from data import build_preprocessor, fit_models, load_dataset
 from explain import default_eval_neighborhood, kernel_weights, rank_stability
 from main_grid import DATASETS, K_EVAL, MODELS, N_CASES
 
@@ -135,7 +138,8 @@ if __name__ == "__main__":
     assert st.shape == fi.shape == (200, 2) and st.notna().all().all() and fi.notna().all().all()
     cs = pd.DataFrame([dict(n=n, metric=k, comparison="dep_aware-isolating_no_dependency", dep_aware_mean=q.loc[n].dep_aware.mean(),
                             dep_aware_sd=q.loc[n].dep_aware.std(), iso_mean=q.loc[n].isolating_no_dependency.mean(),
-                            iso_sd=q.loc[n].isolating_no_dependency.std(),
+                            iso_sd=q.loc[n].isolating_no_dependency.std(), dep_aware_med=q.loc[n].dep_aware.median(),
+                            iso_med=q.loc[n].isolating_no_dependency.median(),
                             **boot(q.loc[n].dep_aware - q.loc[n].isolating_no_dependency))
                        for n in BUDGETS for k, q in [("rank_stability", st), ("fidelity", fi)]])
     cs.to_csv(OUT / "isolating_stability.csv", index=False)
@@ -185,5 +189,33 @@ if __name__ == "__main__":
                  f"{r.wins}/{r.n_cases}"] for r in cs.itertuples()])
     L += ["", "Fidelity paired difference recomputed with the project's conventions vs her `paired.csv` (her script draws both "
           "budgets from one `default_rng(0)` stream, so n = 200 reuses the project's resamples and n = 500 does not):", ""] + c_chk
+    run_med = gi[gi.n == 500].groupby("condition").fidelity.median()
+    L += ["", "Fidelity medians over cases (per-case seed means, the protocol's convention): " + "; ".join(
+        f"n={r.n}: {r.dep_aware_med:.3f} vs {r.iso_med:.3f}" for r in cs[cs.metric == "fidelity"].itertuples()) +
+        f". Her `summary.csv` takes the median over the 500 runs instead ({run_med.dep_aware:.3f} vs "
+        f"{run_med.isolating_no_dependency:.3f} at n = 500); slides and evidence files use the per-case numbers."]
+
+    # D: leaf-size sweep (src/min_samples_leaf_experiment.py): dev accuracy of each refit forest next to the saved lead
+    rows_d = []
+    for d, folder in [("adult", "min_samples_leaf"), ("synthetic_dep", "min_samples_leaf_synthetic_dep")]:
+        ds, lead = load_dataset(d), pd.read_csv(Path("results") / folder / "paired.csv")
+        lead = lead[lead.n == 500].set_index("min_samples_leaf")
+        for leaf in lead.index:
+            rf = Pipeline([("pre", build_preprocessor(ds.numeric, ds.categorical)), ("clf", RandomForestClassifier(
+                n_estimators=200, min_samples_leaf=int(leaf), n_jobs=-1, random_state=0))]).fit(ds.X_train, ds.y_train)
+            rows_d.append(dict(dataset=d, min_samples_leaf=int(leaf), dev_accuracy=rf.score(ds.X_dev, ds.y_dev), lead_n500=lead.mean_delta[leaf],
+                               ci_lo=lead.ci95_low[leaf], ci_hi=lead.ci95_high[leaf], wins=int(lead.dep_aware_wins[leaf])))
+    dd = pd.DataFrame(rows_d)
+    dd.to_csv(OUT / "leaf_sweep.csv", index=False)
+    L += ["", "## D. Leaf-size sweep: forest dev accuracy and the lead over training neighbors (n = 500)", "",
+          "Forests refit here with the sweep's settings (200 trees, seed 0). Lead = mean paired fidelity difference dep_aware - "
+          "neighbors with its 95% CI, from `results/min_samples_leaf*/paired.csv` (`leaf_sweep.csv`).", ""]
+    L += table(["dataset", "min_samples_leaf", "dev accuracy", "lead [95% CI]", "wins/100"],
+               [[r.dataset, r.min_samples_leaf, f"{r.dev_accuracy:.4f}", f"{r.lead_n500:+.3f} [{r.ci_lo:+.3f}, {r.ci_hi:+.3f}]", r.wins]
+                for r in dd.itertuples()])
+    for d, x in dd.groupby("dataset", sort=False):
+        a, b = x.set_index("min_samples_leaf").lead_n500[[2, 20]]
+        L += ["", f"- {d}: the lead falls from {a:+.3f} at leaf size 2 (protocol) to {b:+.3f} at 20, a {100 * (1 - b / a):.0f}% reduction; "
+              f"dev accuracy stays between {x.dev_accuracy.min():.3f} and {x.dev_accuracy.max():.3f}."]
     (OUT / "analysis.md").write_text(txt := "\n".join(L) + "\n")
     print(txt + f"\nwidth check passed: {len(ev)} cases, max |diff| {dw:.1e}; runtime {time.perf_counter() - T0:.1f} s")

@@ -309,6 +309,82 @@ def fig_main():
         print(f"skipped fig_main_paired.png, fig_main_paired_stability.png: {pp} not found yet")
 
 
+# ---- talk figures: simplified slide views in the deck's palette; same CSVs and aggregation as the figures above
+TALK = {"independent": "#2A68A0", "independent_matched": "#A9BED3", "neighbors": "#DB8434", "dep_aware": "#228B84"}
+TALK_RC = {"font.family": "Arial", "figure.facecolor": "white", "axes.facecolor": "white", "savefig.facecolor": "white",
+           "text.color": "#14243E", "axes.labelcolor": "#14243E", "xtick.color": "#14243E", "ytick.color": "#14243E",
+           "axes.edgecolor": "#566270", "grid.color": "#E3E8EE", "xtick.labelsize": 13, "ytick.labelsize": 12}
+
+
+def fig_talk_fidelity(s):
+    """Slide version of fig_main_fidelity: the four compared samplers at n = 500, median over cases, one panel per model."""
+    names = {"independent": "Independent", "independent_matched": "Independent, scale-adjusted",
+             "neighbors": "Training neighbors", "dep_aware": "Dependency-aware"}
+    ds = [("synthetic_dep", "Synthetic,\ncorrelated"), ("synthetic_indep", "Synthetic,\nindependent"), ("adult", "UCI Adult")]
+    q = s[s.n == 500].set_index(["model", "dataset", "condition"]).fidelity_med
+    with plt.rc_context(TALK_RC):
+        fig, axes = plt.subplots(1, 2, figsize=(12.2, 4.7), sharey=True)
+        for ax, (m, title) in zip(axes, [("lr", "Logistic regression"), ("rf", "Random forest")]):
+            for j, c in enumerate(TALK):
+                vals, xs = [q[m, d, c] for d, _ in ds], [i + (j - 1.5) * 0.2 for i in range(3)]
+                ax.bar(xs, vals, 0.184, color=TALK[c], label=names[c])
+                for x, v in zip(xs, vals):
+                    ax.text(x, v + (0.02 if v >= 0 else -0.025), f"{v:.2f}".replace("-", "\u2212"), ha="center",
+                            va="bottom" if v >= 0 else "top", fontsize=10.5, fontweight="bold" if c == "dep_aware" else "normal")
+            ax.axhline(0, color="#14243E", lw=1)
+            ax.set_xticks(range(3), [lab for _, lab in ds])
+            ax.set_ylim(-0.45, 1.05)
+            ax.set_title(title, fontsize=14, fontweight="bold", loc="left")
+            ax.grid(axis="x", visible=False)
+        axes[0].set_ylabel("Median held-out fidelity (R\u00b2)", fontsize=13)
+        axes[1].text(1.86, -0.30, "below 0: worse than predicting\nthe neighborhood average", fontsize=10.5, color="#566270", va="center")
+        fig.legend(*axes[0].get_legend_handles_labels(), ncol=4, loc="upper center", frameon=False, fontsize=12.5,
+                   handlelength=1.1, columnspacing=1.6)
+        fig.tight_layout(rect=(0, 0, 1, 0.93))
+        fig.savefig(OUT / "fig_talk_fidelity.png", dpi=200)
+        plt.close(fig)
+    print("wrote", OUT / "fig_talk_fidelity.png")
+
+
+def fig_talk_leaf():
+    """Slide figure: lead of dependency-aware over training neighbors (mean paired fidelity difference with its 95% CI,
+    n = 500) against the forest's minimum leaf size, from results/min_samples_leaf*/paired.csv."""
+    with plt.rc_context(TALK_RC):
+        fig, ax = plt.subplots(figsize=(7.4, 4.5))
+        for folder, lab, col, mk, above in [("min_samples_leaf", "UCI Adult", "#14243E", "o", False),
+                                            ("min_samples_leaf_synthetic_dep", "Synthetic, correlated", "#8A97A6", "s", True)]:
+            d = pd.read_csv(RES / folder / "paired.csv")
+            d = d[d.n == 500].sort_values("min_samples_leaf")
+            ax.errorbar(range(len(d)), d.mean_delta, yerr=[d.mean_delta - d.ci95_low, d.ci95_high - d.mean_delta], color=col,
+                        marker=mk, ms=8, lw=2.4, capsize=4, label=lab)
+            for k, v in enumerate(d.mean_delta):
+                t = f"+{v:.2f}" if v >= 0.095 else f"+{v:.3f}"
+                if above and k == 0:
+                    ax.text(k - 0.10, v, t, fontsize=12, color=col, va="center", ha="right")
+                elif above or k == 0:
+                    ax.text(k + 0.09, v + 0.012, t, fontsize=12, color=col, va="bottom")
+                else:  # small Adult values go under the zero line, clear of the other series
+                    ax.text(k, -0.012, t, fontsize=12, color=col, va="top", ha="center")
+        ax.axhline(0, color="#14243E", lw=1)
+        ax.set_xticks(range(5), ["1", "2\n(protocol)", "5", "10", "20"])
+        ax.grid(axis="x", visible=False)
+        ax.set_xlabel("Random-forest minimum leaf size  (larger = memorizes less)", fontsize=13)
+        ax.set_ylabel("Fidelity lead over training neighbors\n(mean, 95% CI)", fontsize=13)
+        ax.set(ylim=(-0.05, 0.41), xlim=(-0.55, 4.5))
+        ax.legend(loc="upper right", frameon=False, fontsize=12.5)
+        fig.tight_layout()
+        fig.savefig(OUT / "fig_talk_leaf.png", dpi=200)
+        plt.close(fig)
+    print("wrote", OUT / "fig_talk_leaf.png")
+
+
+def fig_talk():
+    if (MAIN / "summary.csv").exists():
+        fig_talk_fidelity(pd.read_csv(MAIN / "summary.csv"))
+    if all((RES / f / "paired.csv").exists() for f in ("min_samples_leaf", "min_samples_leaf_synthetic_dep")):
+        fig_talk_leaf()
+
+
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
     p = pd.read_csv(RES / "pilot.csv")
@@ -324,3 +400,4 @@ if __name__ == "__main__":
     else:
         print(f"skipped fig_scale_sweep.png and fig_width_sweep.png: {w4.relative_to(RES.parent)} not found yet")
     fig_main()
+    fig_talk()

@@ -218,3 +218,26 @@ Fidelity paired difference recomputed with the project's conventions vs her `pai
 
 - n=200: recomputed +2.1114 [+0.8245, +4.0354], 90/100; teammate's paired.csv +2.1114 [+0.8245, +4.0354], 90/100; mean and wins match (|mean difference| 4.4e-16); max |CI bound difference| 0.0e+00.
 - n=500: recomputed +1.7697 [+0.7345, +3.2813], 86/100; teammate's paired.csv +1.7697 [+0.7390, +3.2824], 86/100; mean and wins match (|mean difference| 2.2e-16); max |CI bound difference| 4.5e-03.
+
+Fidelity medians over cases (per-case seed means, the protocol's convention): n=200: 0.533 vs 0.354; n=500: 0.569 vs 0.446. Her `summary.csv` takes the median over the 500 runs instead (0.583 vs 0.450 at n = 500); slides and evidence files use the per-case numbers.
+
+## D. Leaf-size sweep: forest dev accuracy and the lead over training neighbors (n = 500)
+
+Forests refit here with the sweep's settings (200 trees, seed 0). Lead = mean paired fidelity difference dep_aware - neighbors with its 95% CI, from `results/min_samples_leaf*/paired.csv` (`leaf_sweep.csv`).
+
+| dataset | min_samples_leaf | dev accuracy | lead [95% CI] | wins/100 |
+|---|---|---|---|---|
+| adult | 1 | 0.8543 | +0.307 [+0.249, +0.369] | 95 |
+| adult | 2 | 0.8621 | +0.054 [+0.043, +0.065] | 87 |
+| adult | 5 | 0.8601 | +0.018 [+0.009, +0.027] | 76 |
+| adult | 10 | 0.8561 | +0.012 [+0.002, +0.021] | 69 |
+| adult | 20 | 0.8526 | +0.009 [+0.001, +0.018] | 66 |
+| synthetic_dep | 1 | 0.7507 | +0.184 [+0.170, +0.199] | 100 |
+| synthetic_dep | 2 | 0.7533 | +0.128 [+0.117, +0.139] | 100 |
+| synthetic_dep | 5 | 0.7553 | +0.065 [+0.059, +0.071] | 99 |
+| synthetic_dep | 10 | 0.7527 | +0.040 [+0.035, +0.044] | 98 |
+| synthetic_dep | 20 | 0.7533 | +0.026 [+0.023, +0.030] | 96 |
+
+- adult: the lead falls from +0.054 at leaf size 2 (protocol) to +0.009 at 20, a 82% reduction; dev accuracy stays between 0.853 and 0.862.
+
+- synthetic_dep: the lead falls from +0.128 at leaf size 2 (protocol) to +0.026 at 20, a 79% reduction; dev accuracy stays between 0.751 and 0.755.
